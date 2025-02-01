@@ -1,6 +1,6 @@
 output "private_subnet_ids" {
   value = var.subnet_ids 
-  description "Output the passed-in subnet_ids variable"
+  description = "Output the passed-in subnet_ids variable"
 }
 output "cluster_name" {
   value = aws_eks_cluster.main.name
