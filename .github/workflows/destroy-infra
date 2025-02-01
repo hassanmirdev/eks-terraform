@@ -39,4 +39,4 @@ jobs:
       - name: Destroy Resources
         run: |
           cd ./infra/environments/${{ github.event.inputs.environment || 'dev' }}
-          terraform destroy -auto-approve -var-file="${{ github.event.inputs.environment || 'dev' }}.tfvars"
+          terraform destroy -auto-approve
