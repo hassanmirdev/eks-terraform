@@ -122,11 +122,6 @@ resource "aws_iam_role_policy_attachment" "fargate_policy" {
   role       = aws_iam_role.fargate_execution_role.name
 }
 
-# Output the EKS Cluster name
-output "cluster_name" {
-  value = aws_eks_cluster.main.name
-}
-
 
 # IAM role for fargate
 
