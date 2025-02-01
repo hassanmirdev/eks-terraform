@@ -30,8 +30,3 @@ module "eks" {
   fargate_profile_name = "fargate-profile"
 }
 
-# Optional output for debugging or checking the cluster name
-output "cluster_name" {
-  value = module.eks.cluster_name
-}
-
