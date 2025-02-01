@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: alb-ingress-controller
+  namespace: kube-system
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::677276078111:role/eks-fargate-profile-role  # The correct IAM role ARN
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alb-ingress-controller
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alb-ingress-controller
+  template:
+    metadata:
+      labels:
+        app: alb-ingress-controller
+    spec:
+      containers:
+        - name: alb-ingress-controller
+          image: amazon/aws-alb-ingress-controller:v2.3.0
+          env:
+            - name: AWS_REGION
+              value: us-east-1
+            - name: CLUSTER_NAME
+              value: my-cluster  # Replace with the actual cluster name
+

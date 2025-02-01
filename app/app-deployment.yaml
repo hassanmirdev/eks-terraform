@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: appointment-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: appointment-service
+  template:
+    metadata:
+      labels:
+        app: appointment-service
+    spec:
+      containers:
+        - name: appointment-service
+          image: 677276078111.dkr.ecr.us-east-1.amazonaws.com/my-app-repo:appointment-service-latest
+          ports:
+            - containerPort: 3001
+
