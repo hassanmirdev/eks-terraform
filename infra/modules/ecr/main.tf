@@ -1,3 +1,3 @@
-resource "aws_ecr_repository" "my-app-repo" {
+resource "aws_ecr_repository" "app_repo" {
   name = var.repo_name
 }
