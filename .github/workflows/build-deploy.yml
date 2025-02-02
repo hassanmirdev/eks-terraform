@@ -1,11 +1,11 @@
-name: Build Docker Image and Push Docker Images to ECR
-run-name: Build & Push Docker Images
+name: Build Docker Image, Push Docker Images, and Deploy to EKS
+run-name: Build, Push Docker Images & Deploy to EKS
 
 on:
   workflow_dispatch:
 
 jobs:
-  build-and-push:
+  build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -40,3 +40,39 @@ jobs:
         docker build -t appointment-service:latest -f Dockerfile .
         docker tag appointment-service:latest 677276078111.dkr.ecr.us-east-1.amazonaws.com/my-app-repo:appointment-service-latest
         docker push 677276078111.dkr.ecr.us-east-1.amazonaws.com/my-app-repo:appointment-service-latest
+
+    # Set up AWS credentials for kubectl to use
+    - name: Configure AWS Credentials for kubectl
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+
+    # Set up kubectl
+    - name: Set up kubectl
+      run: |
+        curl -LO "https://dl.k8s.io/release/v1.27.0/bin/linux/amd64/kubectl"
+        chmod +x ./kubectl
+        sudo mv ./kubectl /usr/local/bin/kubectl
+
+    # Get EKS Cluster credentials for kubectl
+    - name: Configure kubectl for EKS
+      run: |
+        aws eks update-kubeconfig --name ${{ secrets.EKS_CLUSTER_NAME }} --region ${{ secrets.AWS_REGION }}
+
+    # Deploy Patient Service to Kubernetes
+    - name: Deploy Patient Service to Kubernetes
+      run: |
+        cd ./app/k8s
+        kubectl apply -f pat-deployment.yaml
+        kubectl apply -f pat-service.yaml
+        kubectl apply -f ingress-controller.yaml
+
+    # Deploy Appointment Service to Kubernetes
+    - name: Deploy Appointment Service to Kubernetes
+      run: |
+        cd ./app/k8s
+        kubectl apply -f app-deployment.yaml
+        kubectl apply -f app-service.yaml
+        kubectl apply -f ingress-controller.yaml
