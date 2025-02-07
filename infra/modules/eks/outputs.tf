@@ -6,3 +6,6 @@ output "cluster_name" {
   value = aws_eks_cluster.main.name
   description = "The name of the EKS cluster"
 }
+output "eks_cluster_endpoint" {
+  value = aws_eks_cluster.main.endpoint
+}
