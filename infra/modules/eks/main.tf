@@ -4,13 +4,41 @@
 resource "aws_eks_cluster" "main" {
   name     = var.cluster_name
   role_arn = aws_iam_role.eks_service_role.arn
-  # subnet_ids = var.subnet_ids
   vpc_config {
-    subnet_ids = var.subnet_ids
+    
+    subnet_ids              = var.private_subnet_ids
+    security_group_ids = [aws_security_group.eks_sg.id]
+    endpoint_public_access  = true
+    endpoint_private_access = true
   }
-
+ 
+tags = {
+    Name = "eks-cluster"
+}
   depends_on = [aws_iam_role_policy_attachment.eks_service_policy]
 }
+
+# EKS Node Group definition
+resource "aws_eks_node_group" "eks_node_group" {
+  cluster_name    = aws_eks_cluster.main.name
+  node_group_name = "eks-node-group"
+  node_role_arn   = aws_iam_role.eks_node_role.arn
+  subnet_ids      = var.var.private_subnet_ids
+  scaling_config {
+    desired_size = 2
+    max_size     = 3
+    min_size     = 1
+  }
+  
+  instance_types = ["t3.medium"]
+  disk_size      = 20
+
+  remote_access {
+    ec2_ssh_key = var.ssh_key_name  # Add your SSH key for access
+}
+  depends_on = [aws_iam_role_policy_attachment.eks_node_policy]
+}
+
 
 # IAM Role for EKS service
 resource "aws_iam_role" "eks_service_role" {
@@ -31,59 +59,15 @@ resource "aws_iam_role" "eks_service_role" {
   })
 }
 
-
-resource "aws_iam_policy" "ecr_pull_policy" {
-  name        = "ECRPullPolicy"
-  description = "Policy for allowing ECR pull access"
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action    = "ecr:GetAuthorizationToken"
-        Effect    = "Allow"
-        Resource  = "*"
-      },
-      {
-        Action    = "ecr:BatchGetImage"
-        Effect    = "Allow"
-        Resource  = "*"
-      },
-      {
-        Action    = "ecr:BatchGetRepositoryScanningConfiguration"
-        Effect    = "Allow"
-        Resource  = "*"
-      }
-    ]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "fargate_ecr_pull" {
-  policy_arn = aws_iam_policy.ecr_pull_policy.arn
-  role       = aws_iam_role.fargate_execution_role.name
-}
-
 # Attach EKS service policy to the role
 resource "aws_iam_role_policy_attachment" "eks_service_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
   role       = aws_iam_role.eks_service_role.name
 }
 
-# Fargate Profile definition
-resource "aws_eks_fargate_profile" "main" {
-  cluster_name          = aws_eks_cluster.main.name
-  fargate_profile_name  = var.fargate_profile_name
-  pod_execution_role_arn = aws_iam_role.fargate_execution_role.arn
-  subnet_ids            = var.subnet_ids
-
-  selector {
-    namespace = "default"  # Change this to your desired namespace
-  }
-}
-
-# IAM Role for Fargate execution (updated trust policy)
-resource "aws_iam_role" "fargate_execution_role" {
-  name = "fargate-execution-role"
+# IAM Role for EKS Node Group
+resource "aws_iam_role" "eks_node_role" {
+  name = "eks-node-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17",
@@ -91,23 +75,7 @@ resource "aws_iam_role" "fargate_execution_role" {
       {
         Action    = "sts:AssumeRole"
         Principal = {
-          Service = "eks-fargate.amazonaws.com"  # Fargate service principal
-        }
-        Effect    = "Allow"
-        Sid       = ""
-      },
-      {
-        Action    = "sts:AssumeRole"
-        Principal = {
-          Service = "eks.amazonaws.com"  # Allow EKS service to assume this role as well
-        }
-        Effect    = "Allow"
-        Sid       = ""
-      },
-      {
-        Action    = "sts:AssumeRole"
-        Principal = {
-          Service = "eks-fargate-pods.amazonaws.com"  # Fargate Pods service principal
+          Service = "ec2.amazonaws.com"
         }
         Effect    = "Allow"
         Sid       = ""
@@ -116,70 +84,95 @@ resource "aws_iam_role" "fargate_execution_role" {
   })
 }
 
-# Attach Fargate execution policy to the role
-resource "aws_iam_role_policy_attachment" "fargate_policy" {
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSFargatePodExecutionRolePolicy"
-  role       = aws_iam_role.fargate_execution_role.name
-}
+# IAM policy for EKS Node Group
+resource "aws_iam_policy" "eks_node_policy" {
+  name        = "eksNodePolicy"
+  description = "Policy for allowing EKS worker nodes to interact with EKS"
 
-
-# IAM role for fargate
-
-# IAM role for EKS Fargate Profile (with ALB permissions)
-resource "aws_iam_role" "fargate_profile_role" {
-  name = "eks-fargate-profile-role"
-  
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Principal = {
-          Service = "eks-fargate.amazonaws.com"
-        }
-        Effect = "Allow"
-        Sid    = ""
-      },
-    ]
-  })
-}
-
-# IAM policy to allow the Fargate profile to interact with ALB
-resource "aws_iam_policy" "alb_ingress_controller_policy" {
-  name        = "ALBIngressControllerPolicy"
-  description = "Policy for ALB Ingress Controller to manage ALBs"
   policy = jsonencode({
-    Version = "2012-10-17"
+    Version = "2012-10-17",
     Statement = [
       {
-        Action = [
-          "ec2:DescribeInstances",
-          "ec2:DescribeSecurityGroups",
-          "ec2:DescribeSubnets",
-          "ec2:DescribeVpcs",
-          "elasticloadbalancing:DescribeLoadBalancers",
-          "elasticloadbalancing:DescribeTargetGroups",
-          "elasticloadbalancing:DescribeListeners",
-          "elasticloadbalancing:DescribeRules",
-          "elasticloadbalancing:ModifyTargetGroup",
-          "elasticloadbalancing:CreateTargetGroup",
-          "elasticloadbalancing:DeleteTargetGroup",
-          "elasticloadbalancing:CreateListener",
-          "elasticloadbalancing:DeleteListener",
-          "elasticloadbalancing:AddTags",
-          "elasticloadbalancing:RemoveTags"
-        ]
-        Resource = "*"
-        Effect = "Allow"
+        Action    = "ec2:DescribeInstances"
+        Effect    = "Allow"
+        Resource  = "*"
       },
+      {
+        Action    = "ec2:DescribeSecurityGroups"
+        Effect    = "Allow"
+        Resource  = "*"
+      },
+      {
+        Action    = "ec2:DescribeSubnets"
+        Effect    = "Allow"
+        Resource  = "*"
+      },
+      {
+        Action    = "ec2:DescribeVpcs"
+        Effect    = "Allow"
+        Resource  = "*"
+      },
+      {
+        Action    = "eks:DescribeCluster"
+        Effect    = "Allow"
+        Resource  = "*"
+      },
+      {
+        Action    = "iam:PassRole"
+        Effect    = "Allow"
+        Resource  = "*"
+      }
     ]
   })
 }
 
-resource "aws_iam_role_policy_attachment" "alb_ingress_controller_policy_attachment" {
-  policy_arn = aws_iam_policy.alb_ingress_controller_policy.arn
-  role       = aws_iam_role.fargate_profile_role.name
+# Attach the EKS Node Group policy to the role
+resource "aws_iam_role_policy_attachment" "eks_node_policy" {
+  policy_arn = aws_iam_policy.eks_node_policy.arn
+  role       = aws_iam_role.eks_node_role.name
 }
 
+resource "aws_security_group" "eks_sg" {
+  name        = "eks-cluster-sg"
+  description = "EKS cluster security group"
+  vpc_id      = var.vpc_id
 
+  egress {
+    from_port   = 0          # Allow all ports for egress traffic
+    to_port     = 0          # Allow all ports for egress traffic
+    protocol    = "-1"       # All protocols
+    cidr_blocks = ["0.0.0.0/0"]  # Allow traffic to anywhere
+  }
 
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]  # Allow HTTP traffic from anywhere
+  }
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]  # Allow HTTPS traffic from anywhere
+  }
+  
+  ingress {
+    from_port   = 3000
+    to_port     = 3000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]  # Allow HTTPS traffic from anywhere
+  }
+
+  ingress {
+    from_port   = 3001
+    to_port     = 3001
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]  # Allow HTTPS traffic from anywhere
+  }
+
+  tags = {
+    Name = "eks-cluster-sg"
+  }
+}
